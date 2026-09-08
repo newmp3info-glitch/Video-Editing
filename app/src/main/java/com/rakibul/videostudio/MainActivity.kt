@@ -439,7 +439,7 @@ private fun Timeline(
         Box(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 8.dp)) {
             Row(Modifier.height(90.dp), verticalAlignment = Alignment.CenterVertically) {
                 clips.forEachIndexed { idx, clip ->
-                    val width = (clip.editDurationMs / 115L).coerceIn(80L, 330L).dp
+                    val width = (clip.editDurationMs / 115L).coerceIn(80L, 330L).toInt().dp
                     ClipBlock(clip, width, idx == selectedIndex, thumbnails[clip.id].orEmpty(), { onSelect(idx) }, { s,e -> onTrim(idx,s,e) })
                 }
                 Box(Modifier.width(66.dp).fillMaxHeight().padding(4.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF242424)).clickable(onClick = onAdd), contentAlignment = Alignment.Center) { Icon(Icons.Default.Add, null, tint = Color.White) }
@@ -519,6 +519,4 @@ private fun effectColor(name:String):Color=when(name){"Lightning"->Color(0xFF263
 private fun seekGlobal(player:ExoPlayer,clips:List<Clip>,globalMs:Long){var left=globalMs.coerceAtLeast(0L);for((i,c)in clips.withIndex()){val d=c.editDurationMs;if(left<=d||i==clips.lastIndex){player.seekTo(i,(left*c.speed).toLong().coerceIn(0L,c.trimEndMs-c.trimStartMs)+c.trimStartMs);return};left-=d}}
 
 
-@UnstableApi
-private fun buildStickerEffects(stickers:List<Sticker>):androidx.media3.common.Effect?=if(stickers.isEmpty())null else OverlayEffect(stickers.map{AnimatedStickerOverlay(it)})
 

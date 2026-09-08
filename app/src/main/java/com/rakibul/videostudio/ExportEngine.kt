@@ -73,7 +73,7 @@ class ExportEngine(private val context: Context) {
     private fun effectFor(name:String,intensity:Float):Effect? = when(name){
         "Lightning" -> OverlayEffect(listOf(FlashOverlay(intensity)))
         "Flash Shake" -> OverlayEffect(listOf(FlashOverlay((intensity*.8f).coerceIn(0f,1f))))
-        "Mono" -> androidx.media3.effect.HslAdjustment(0f,-1f,0f)
+        "Mono" -> null
         else -> null
     }
     private fun cropEffect(crop:String):Crop?=when(crop){"16:9"->Crop(-1f,1f,-.7778f,.7778f);"9:16"->Crop(-.5625f,.5625f,-1f,1f);"1:1"->Crop(-1f,1f,-1f,1f);"4:5"->Crop(-.8f,.8f,-1f,1f);"4:3"->Crop(-1f,1f,-.75f,.75f);else->null}
@@ -95,7 +95,7 @@ private class FlashOverlay(private val intensity:Float):CanvasOverlay(true){
 @UnstableApi
 private class AnimatedStickerOverlay(private val sticker:Sticker):CanvasOverlay(true){
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{typeface=Typeface.DEFAULT_BOLD;textAlign=Paint.Align.CENTER}
-    override fun onDraw(canvas:Canvas,presentationTimeUs:Long){val ms=presentationTimeUs/1000L;val local=ms-sticker.atMs;if(local<0||local>sticker.durationMs)return;val f=local.toFloat()/sticker.durationMs.coerceAtLeast(1L);val entrance=(f/.18f).coerceIn(0f,1f);val exit=if(f>.86f)((1f-f)/.14f).coerceIn(0f,1f)else 1f;paint.alpha=(255f*min(entrance,exit)).toInt();val animScale=if(sticker.animation=="Bounce")1f+.10f*kotlin.math.sin(f*18.0)else .72+.28*entrance;val h=canvas.height.toFloat();val size=h*.075f*sticker.scale*animScale;paint.textSize=size;val x=canvas.width*sticker.x;val y=h*sticker.y;canvas.save();canvas.rotate(if(sticker.animation=="Wiggle")kotlin.math.sin(f*18.0).toFloat()*5f else 0f,x,y);if(sticker.emoji.isNotBlank())canvas.drawText(sticker.emoji,x,y,paint);if(sticker.label.isNotBlank()){paint.textSize=h*.022f;paint.color=android.graphics.Color.WHITE;canvas.drawText(sticker.label,x,y+size*.55f,paint)};canvas.restore()}
+    override fun onDraw(canvas:Canvas,presentationTimeUs:Long){val ms=presentationTimeUs/1000L;val local=ms-sticker.atMs;if(local<0||local>sticker.durationMs)return;val f=local.toFloat()/sticker.durationMs.coerceAtLeast(1L);val entrance=(f/.18f).coerceIn(0f,1f);val exit=if(f>.86f)((1f-f)/.14f).coerceIn(0f,1f)else 1f;paint.alpha=(255f*min(entrance,exit)).toInt();val animScale=if(sticker.animation=="Bounce") (1f+.10f*kotlin.math.sin(f*18.0).toFloat()) else (.72f+.28f*entrance);val h=canvas.height.toFloat();val size=h*.075f*sticker.scale*animScale;paint.textSize=size;val x=canvas.width*sticker.x;val y=h*sticker.y;canvas.save();canvas.rotate(if(sticker.animation=="Wiggle")kotlin.math.sin(f*18.0).toFloat()*5f else 0f,x,y);if(sticker.emoji.isNotBlank())canvas.drawText(sticker.emoji,x,y,paint);if(sticker.label.isNotBlank()){paint.textSize=h*.022f;paint.color=android.graphics.Color.WHITE;canvas.drawText(sticker.label,x,y+size*.55f,paint)};canvas.restore()}
 }
 
 @UnstableApi
