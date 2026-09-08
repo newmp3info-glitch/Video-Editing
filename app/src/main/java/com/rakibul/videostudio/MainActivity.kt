@@ -35,6 +35,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.AutoFixHigh
+
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
@@ -127,43 +128,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class Clip(
-    val id: Long,
-    val uri: Uri,
-    val name: String,
-    val durationMs: Long,
-    val trimStartMs: Long = 0,
-    val trimEndMs: Long = durationMs,
-    val speed: Float = 1f,
-    val volume: Float = 1f,
-    val effect: String = "None",
-    val effectIntensity: Float = 0.7f,
-    val crop: String = "9:16"
-) {
-    val editDurationMs: Long get() = max(1L, ((trimEndMs - trimStartMs) / speed).toLong())
-}
-
-data class AudioTrack(
-    val id: Long,
-    val uri: Uri,
-    val name: String,
-    val durationMs: Long,
-    val volume: Float = 1f,
-    val startMs: Long = 0L
-)
-
-data class Sticker(
-    val id: Long,
-    val emoji: String,
-    val label: String,
-    val atMs: Long,
-    val durationMs: Long = 1800L,
-    val x: Float = 0.5f,
-    val y: Float = 0.78f,
-    val scale: Float = 1f,
-    val animation: String = "Pop"
-)
-
 enum class Tool(val label: String, val icon: @Composable () -> Unit) {
     EDIT("Edit", { Icon(Icons.Default.ContentCut, null) }),
     AUDIO("Audio", { Icon(Icons.Default.AudioFile, null) }),
@@ -210,13 +174,15 @@ fun RakibulEditor() {
     var contrast by remember { mutableFloatStateOf(1f) }
     var speed by remember { mutableFloatStateOf(1f) }
     var volume by remember { mutableFloatStateOf(1f) }
+    val editorState = remember { EditorProjectState() }
 
     fun pushUndo() {
-        if (clips.isNotEmpty()) undoStack = (undoStack + listOf(clips)).takeLast(30)
+        if (clips.isNotEmpty()) { editorState.pushUndo(clips); undoStack = (undoStack + listOf(clips)).takeLast(30) }
         redoStack = emptyList()
     }
 
-    val player = remember { ExoPlayer.Builder(context).build().apply { repeatMode = Player.REPEAT_MODE_OFF } }
+    val videoEngine = remember { VideoEditorEngine(context) }
+    val player = videoEngine.player
     val audioPlayers = remember { mutableStateMapOf<Long, ExoPlayer>() }
 
     DisposableEffect(Unit) {
@@ -234,7 +200,7 @@ fun RakibulEditor() {
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
-            player.release()
+            videoEngine.release()
             audioPlayers.values.forEach { it.release() }
             audioPlayers.clear()
         }
@@ -245,24 +211,13 @@ fun RakibulEditor() {
             player.clearMediaItems()
             return@LaunchedEffect
         }
-        val wasPlaying = isPlaying
-        val items = clips.map { c ->
-            MediaItem.Builder().setUri(c.uri).setClippingConfiguration(
-                MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.trimStartMs).setEndPositionMs(c.trimEndMs).build()
-            ).build()
-        }
-        val index = selectedIndex.coerceIn(0, clips.lastIndex)
-        player.setMediaItems(items, index, 0L)
-        player.prepare()
-        player.playWhenReady = wasPlaying
-        player.setPlaybackParameters(PlaybackParameters(clips[index].speed))
-        player.volume = clips[index].volume
+        videoEngine.load(clips, selectedIndex, isPlaying)
     }
 
     LaunchedEffect(player) {
         while (true) {
             if (player.playbackState != Player.STATE_IDLE && clips.isNotEmpty()) {
-                val base = clips.take(player.currentMediaItemIndex.coerceAtLeast(0)).sumOf { it.editDurationMs }
+                val base = TimelineEngine.durationBefore(clips, player.currentMediaItemIndex.coerceAtLeast(0))
                 globalPosition = base + player.currentPosition
             }
             delay(60)
@@ -273,7 +228,7 @@ fun RakibulEditor() {
         if (clips.isEmpty()) return@LaunchedEffect
         thumbnails = withContext(Dispatchers.IO) {
             val out = thumbnails.toMutableMap()
-            clips.forEach { if (!out.containsKey(it.id)) out[it.id] = makeThumbnails(context, it.uri, it.durationMs) }
+            clips.forEach { if (!out.containsKey(it.id)) out[it.id] = MediaUtils.makeThumbnails(context, it.uri, it.durationMs) }
             out
         }
     }
@@ -333,7 +288,7 @@ fun RakibulEditor() {
             val wasEmpty = clips.isEmpty()
             val added = uris.mapIndexed { i, uri ->
                 runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                Clip(System.nanoTime() + i, uri, displayName(context.contentResolver, uri), durationOf(context.contentResolver, uri))
+                Clip(System.nanoTime() + i, uri, MediaUtils.displayName(context.contentResolver, uri), MediaUtils.durationOf(context.contentResolver, uri))
             }
             pushUndo(); clips = clips + added
             if (wasEmpty) { selectedIndex = 0; isPlaying = true }
@@ -344,7 +299,7 @@ fun RakibulEditor() {
         if (uris.isNotEmpty()) {
             audioTracks = audioTracks + uris.mapIndexed { i, uri ->
                 runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-                AudioTrack(System.nanoTime() + i, uri, displayName(context.contentResolver, uri), durationOf(context.contentResolver, uri))
+                AudioTrack(System.nanoTime() + i, uri, MediaUtils.displayName(context.contentResolver, uri), MediaUtils.durationOf(context.contentResolver, uri))
             }
         }
     }
@@ -409,7 +364,7 @@ fun RakibulEditor() {
     if (showExport) {
         ExportDialog(onDismiss = { showExport = false }, onExport = { quality ->
             showExport = false; exportMessage = "Exporting $quality…"
-            exportProject(context, clips, audioTracks, stickers + captions, crop, brightness, contrast, quality) { _, msg -> exportMessage = msg; scope.launch { delay(4500); exportMessage = "" } }
+            ExportEngine(context).export(clips, audioTracks, stickers + captions, crop, brightness, contrast, quality) { _, msg -> exportMessage = msg; scope.launch { delay(4500); exportMessage = "" } }
         })
     }
 }
@@ -480,11 +435,11 @@ private fun Timeline(
     val total = clips.sumOf { it.editDurationMs }.coerceAtLeast(1L)
     val scroll = rememberScrollState()
     Column(Modifier.fillMaxWidth().background(Color(0xFF111111)).padding(vertical = 7.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(formatMs(globalPosition), color = Color.LightGray, fontSize = 11.sp); Spacer(Modifier.weight(1f)); Text(formatMs(total), color = Color.Gray, fontSize = 11.sp) }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text(MediaUtils.formatMs(globalPosition), color = Color.LightGray, fontSize = 11.sp); Spacer(Modifier.weight(1f)); Text(MediaUtils.formatMs(total), color = Color.Gray, fontSize = 11.sp) }
         Box(Modifier.fillMaxWidth().horizontalScroll(scroll).padding(horizontal = 8.dp)) {
             Row(Modifier.height(90.dp), verticalAlignment = Alignment.CenterVertically) {
                 clips.forEachIndexed { idx, clip ->
-                    val width = (clip.editDurationMs / 115L).coerceIn(80L, 330L).toInt().dp
+                    val width = (clip.editDurationMs / 115L).coerceIn(80L, 330L).dp
                     ClipBlock(clip, width, idx == selectedIndex, thumbnails[clip.id].orEmpty(), { onSelect(idx) }, { s,e -> onTrim(idx,s,e) })
                 }
                 Box(Modifier.width(66.dp).fillMaxHeight().padding(4.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF242424)).clickable(onClick = onAdd), contentAlignment = Alignment.Center) { Icon(Icons.Default.Add, null, tint = Color.White) }
@@ -544,7 +499,7 @@ private fun ToolPanel(
             Tool.STICKERS->{ Text("Animated emoji / CTA stickers",color=Color.White,fontWeight=FontWeight.SemiBold); Spacer(Modifier.height(6.dp)); LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp)){items(stickerCatalog){(emoji,label)->Column(Modifier.width(76.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF242424)).clickable{onAddSticker(emoji,label)}.padding(7.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(emoji,fontSize=30.sp);Text(label,color=Color.White,fontSize=9.sp,textAlign=TextAlign.Center)}}}; Spacer(Modifier.height(8.dp)); Text("Tap any sticker to add it at the playhead. Stickers pop, bounce or wiggle while playing and are included in export.",color=Color.Gray,fontSize=12.sp) }
             Tool.EFFECTS->{ EffectGrid(effect,onEffect); SliderLine("Effect intensity",intensity,0f,1f,onIntensity); Text("Lightning is an instant electric flash, not a long overlay.",color=Color.Gray,fontSize=12.sp) }
             Tool.OVERLAY->{ ActionRow("Add text / emoji overlay",Icons.Default.Layers,onAddText); Text("Photo editing is intentionally excluded. Video overlays only.",color=Color.Gray,fontSize=12.sp) }
-            Tool.CAPTIONS->{ ActionRow("Add animated caption",Icons.Default.TextFields,onAddCaption); captions.takeLast(6).forEach{Text("${formatMs(it.atMs)}  ${if(it.emoji.isBlank())it.label else it.emoji+" "+it.label}",color=Color.LightGray,fontSize=12.sp,modifier=Modifier.padding(5.dp))} }
+            Tool.CAPTIONS->{ ActionRow("Add animated caption",Icons.Default.TextFields,onAddCaption); captions.takeLast(6).forEach{Text("${MediaUtils.formatMs(it.atMs)}  ${if(it.emoji.isBlank())it.label else it.emoji+" "+it.label}",color=Color.LightGray,fontSize=12.sp,modifier=Modifier.padding(5.dp))} }
             Tool.FILTERS->{ EffectGrid(effect,onEffect,true); SliderLine("Filter strength",intensity,0f,1f,onIntensity) }
             Tool.ADJUST->{ SliderLine("Brightness",brightness,-1f,1f,onBrightness); SliderLine("Contrast",contrast,.5f,1.8f,onContrast) }
         }
@@ -562,53 +517,8 @@ private fun effectColor(name:String):Color=when(name){"Lightning"->Color(0xFF263
 @Composable private fun ExportDialog(onDismiss:()->Unit,onExport:(String)->Unit){AlertDialog(onDismissRequest=onDismiss,title={Text("Export video")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text("Video + multiple audio tracks + emoji/text overlays are rendered into MP4.");listOf("720p","1080p","4K").forEach{q->OutlinedButton(onClick={onExport(q)},modifier=Modifier.fillMaxWidth()){Text(q)}}}},confirmButton={TextButton(onClick=onDismiss){Text("Cancel")}})}
 
 private fun seekGlobal(player:ExoPlayer,clips:List<Clip>,globalMs:Long){var left=globalMs.coerceAtLeast(0L);for((i,c)in clips.withIndex()){val d=c.editDurationMs;if(left<=d||i==clips.lastIndex){player.seekTo(i,(left*c.speed).toLong().coerceIn(0L,c.trimEndMs-c.trimStartMs)+c.trimStartMs);return};left-=d}}
-private fun makeThumbnails(context:Context,uri:Uri,duration:Long):List<ImageBitmap>{val r=android.media.MediaMetadataRetriever();return try{r.setDataSource(context,uri);(0 until 8).mapNotNull{i->val t=if(duration<=0)0L else duration*i/7L;r.getFrameAtTime(t*1000L,android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.asImageBitmap()}}catch(_:Exception){emptyList()}finally{r.release()}}
-private fun durationOf(resolver:ContentResolver,uri:Uri):Long=try{resolver.openAssetFileDescriptor(uri,"r")?.use{afd->val r=android.media.MediaMetadataRetriever();r.setDataSource(afd.fileDescriptor);val d=r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?:0L;r.release();d}?:0L}catch(_:Exception){0L}
-private fun displayName(resolver:ContentResolver,uri:Uri):String=try{resolver.query(uri,arrayOf(OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->if(c.moveToFirst())c.getString(0)else uri.lastPathSegment?:"Media"}?:uri.lastPathSegment?:"Media"}catch(_:Exception){uri.lastPathSegment?:"Media"}
-private fun formatMs(ms:Long):String{val s=(ms/1000).coerceAtLeast(0L);return String.format(Locale.US,"%02d:%02d",s/60,s%60)}
 
-@UnstableApi
-private class AnimatedStickerOverlay(private val sticker:Sticker):CanvasOverlay(true){
-    private val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{typeface=Typeface.DEFAULT_BOLD;textAlign=Paint.Align.CENTER}
-    override fun onDraw(canvas:Canvas,presentationTimeUs:Long){val ms=presentationTimeUs/1000L;val local=ms-sticker.atMs;if(local<0||local>sticker.durationMs)return;val f=local.toFloat()/sticker.durationMs.coerceAtLeast(1L);val entrance=(f/.18f).coerceIn(0f,1f);val exit=if(f>.86f)((1f-f)/.14f).coerceIn(0f,1f)else 1f;val alpha=(255f*min(entrance,exit)).toInt();val animScale=if(sticker.animation=="Bounce"){1f+.10f*kotlin.math.sin(f*18.0)}else .72+.28*entrance;val frameWidth=canvas.width.toFloat();val frameHeight=canvas.height.toFloat();val size=(frameHeight*.075f*sticker.scale*animScale).toFloat();paint.textSize=size;paint.alpha=alpha;val x=frameWidth*sticker.x;val y=frameHeight*sticker.y;canvas.save();canvas.rotate(if(sticker.animation=="Wiggle")kotlin.math.sin(f*18.0).toFloat()*5f else 0f,x,y);if(sticker.emoji.isNotBlank()){canvas.drawText(sticker.emoji,x,y,paint);};if(sticker.label.isNotBlank()){paint.textSize=frameHeight*.022f;paint.color=android.graphics.Color.WHITE;canvas.drawText(sticker.label,x,y+size*.55f,paint)};canvas.restore()}
-}
 
 @UnstableApi
 private fun buildStickerEffects(stickers:List<Sticker>):androidx.media3.common.Effect?=if(stickers.isEmpty())null else OverlayEffect(stickers.map{AnimatedStickerOverlay(it)})
 
-@OptIn(UnstableApi::class)
-private fun exportProject(context:Context,clips:List<Clip>,audio:List<AudioTrack>,stickers:List<Sticker>,crop:String,brightness:Float,contrast:Float,quality:String,callback:(Boolean,String)->Unit){
-    if(clips.isEmpty()){callback(false,"Import a video first.");return}
-    val outDir=File(context.getExternalFilesDir(null),"exports").apply{mkdirs()};val stamp=SimpleDateFormat("yyyyMMdd_HHmmss",Locale.US).format(Date());val out=File(outDir,"Rakibul_$stamp.mp4")
-    val edited=clips.map{clip->
-        val media=MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.trimStartMs).setEndPositionMs(clip.trimEndMs).build()).build()
-        val effects=mutableListOf<androidx.media3.common.Effect>()
-        if(abs(brightness)>.01f)effects+=Brightness(brightness.coerceIn(-1f,1f))
-        if(abs(contrast-1f)>.01f)effects+=Contrast(contrast.coerceIn(.5f,2f))
-        cropEffect(crop)?.let{effects+=it};presentationEffect(quality,crop)?.let{effects+=it}
-        val builder=EditedMediaItem.Builder(media).setEffects(Effects(emptyList(),effects))
-        if(clip.speed!=1f)builder.setSpeed(object:SpeedProvider{override fun getSpeed(presentationTimeUs:Long)=clip.speed;override fun getNextSpeedChangeTimeUs(timeUs:Long)=androidx.media3.common.C.TIME_UNSET})
-        builder.build()
-    }
-    val videoSeq=EditedMediaItemSequence.withAudioAndVideoFrom(edited)
-    val sequences=mutableListOf(videoSeq)
-    audio.forEach{track->
-        val processors=mutableListOf<androidx.media3.common.audio.AudioProcessor>()
-        if(track.volume!=1f){val p=ChannelMixingAudioProcessor();p.putChannelMixingMatrix(ChannelMixingMatrix(1,1,floatArrayOf(track.volume.coerceIn(0f,2f))));p.putChannelMixingMatrix(ChannelMixingMatrix(2,2,floatArrayOf(track.volume.coerceIn(0f,2f),0f,0f,track.volume.coerceIn(0f,2f))));processors+=p}
-        val a=EditedMediaItem.Builder(MediaItem.fromUri(track.uri)).setRemoveVideo(true).setEffects(Effects(processors,emptyList())).build()
-        val seq=EditedMediaItemSequence.Builder(setOf(androidx.media3.common.C.TRACK_TYPE_AUDIO)).addItem(a).setIsLooping(true).build();sequences+=seq
-    }
-    val compositionBuilder = Composition.Builder(sequences)
-    buildStickerEffects(stickers)?.let { compositionBuilder.setEffects(Effects(emptyList(), listOf(it))) }
-    val composition = compositionBuilder.build()
-    val transformer=Transformer.Builder(context).setVideoMimeType(androidx.media3.common.MimeTypes.VIDEO_H264).setAudioMimeType(androidx.media3.common.MimeTypes.AUDIO_AAC).addListener(object:Transformer.Listener{
-        override fun onCompleted(composition:Composition,exportResult:androidx.media3.transformer.ExportResult){callback(true,"Exported: ${out.absolutePath}")}
-        override fun onError(composition:Composition,exportResult:androidx.media3.transformer.ExportResult,exportException:ExportException){callback(false,"Export failed: ${exportException.message?:"unknown error"}")}
-    }).build()
-    runCatching{transformer.start(composition,out.absolutePath)}.onFailure{callback(false,"Export failed: ${it.message?:"unknown error"}")}
-}
-
-@OptIn(UnstableApi::class)
-private fun presentationEffect(quality:String,crop:String):Presentation{val base=when(quality){"720p"->720;"1080p"->1080;else->2160};val(w,h)=when(crop){"9:16"->base to base*16/9;"1:1"->base to base;"4:5"->base to base*5/4;"4:3"->base to base*3/4;else->base*16/9 to base};return Presentation.createForWidthAndHeight(w.toInt(),h.toInt(),Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)}
-@OptIn(UnstableApi::class)
-private fun cropEffect(crop:String):Crop?=when(crop){"16:9"->Crop(-1f,1f,-.7778f,.7778f);"9:16"->Crop(-.5625f,.5625f,-1f,1f);"1:1"->Crop(-1f,1f,-1f,1f);"4:5"->Crop(-.8f,.8f,-1f,1f);"4:3"->Crop(-1f,1f,-.75f,.75f);else->null}

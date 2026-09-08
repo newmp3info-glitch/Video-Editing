@@ -1,25 +1,8 @@
 package com.rakibul.videostudio
 
 object TimelineEngine {
-    fun totalDuration(clips: List<EditorClipModel>): Long = clips.sumOf { it.durationMs }
-
-    fun clipStart(clips: List<EditorClipModel>, index: Int): Long =
-        clips.take(index.coerceAtLeast(0)).sumOf { it.durationMs }
-
-    fun clipAt(clips: List<EditorClipModel>, globalMs: Long): Int {
-        if (clips.isEmpty()) return -1
-        var cursor = 0L
-        clips.forEachIndexed { i, clip ->
-            val end = cursor + clip.durationMs
-            if (globalMs in cursor..end) return i
-            cursor = end
-        }
-        return clips.lastIndex
-    }
-
-    fun globalToLocal(clips: List<EditorClipModel>, globalMs: Long): Pair<Int, Long> {
-        val index = clipAt(clips, globalMs)
-        if (index < 0) return -1 to 0L
-        return index to (globalMs - clipStart(clips, index)).coerceIn(0L, clips[index].durationMs)
-    }
+    fun totalDuration(clips: List<Clip>): Long = clips.sumOf { it.editDurationMs }
+    fun durationBefore(clips: List<Clip>, index: Int): Long = clips.take(index.coerceAtLeast(0)).sumOf { it.editDurationMs }
+    fun clipAt(clips: List<Clip>, positionMs: Long): Int { var left=positionMs.coerceAtLeast(0); for(i in clips.indices){ if(left <= clips[i].editDurationMs || i==clips.lastIndex) return i; left-=clips[i].editDurationMs }; return 0 }
+    fun globalToLocal(clips: List<Clip>, positionMs: Long): Pair<Int,Long> { val i=clipAt(clips,positionMs); return i to (positionMs-durationBefore(clips,i)).coerceAtLeast(0) }
 }
