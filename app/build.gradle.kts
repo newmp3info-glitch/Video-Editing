@@ -6,15 +6,12 @@ plugins {
 
 android {
     namespace = "com.rakibul.videostudio"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rakibul.videostudio"
-
-        // Media3 1.11.0-এর বর্তমান Android requirements-এর সঙ্গে সামঞ্জস্যপূর্ণ
         minSdk = 23
-        targetSdk = 35
-
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -65,7 +62,6 @@ dependencies {
 
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.1")
 
-    // Media3
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
     implementation("androidx.media3:media3-transformer:1.11.0")
