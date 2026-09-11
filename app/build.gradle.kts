@@ -32,7 +32,6 @@ android {
     buildFeatures {
         compose = true
     }
-    // Kotlin 2.0 তে composeOptions এর পরিবর্তে সরাসরি প্লাগিন কাজ করে
 }
 
 dependencies {
@@ -50,4 +49,10 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.2.0")
     implementation("androidx.media3:media3-ui:1.2.0")
     implementation("androidx.media3:media3-transformer:1.2.0")
+
+    // Heavy Video Processing Engine (FFmpeg Kit Full - Increases APK size to ~100MB)
+    implementation("com.arthenica:ffmpeg-kit-full:4.5.1")
+
+    // Coroutines for background video rendering tasks
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
