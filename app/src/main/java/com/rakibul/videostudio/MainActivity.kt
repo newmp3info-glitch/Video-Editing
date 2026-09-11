@@ -36,17 +36,19 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxSize(),
                 color = Color(0xFF121212)
             ) {
-                CapCutClassicEditorScreen()
+                CapCutExactTimelineScreen()
             }
         }
     }
 }
 
 @Composable
-fun CapCutClassicEditorScreen() {
+fun CapCutExactTimelineScreen() {
     var selectedVideoUri by remember { mutableStateOf<Uri?>(null) }
-    var currentTool by remember { mutableStateOf("Timeline - Select a tool below") }
+    var currentTool by remember { mutableStateOf("Timeline Ready - Select any tool below") }
     var isPlaying by remember { mutableStateOf(true) }
+    var audioAdded by remember { mutableStateOf(false) }
+    var textAdded by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     val videoPickerLauncher = rememberLauncherForActivityResult(
@@ -63,9 +65,9 @@ fun CapCutClassicEditorScreen() {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFF1E1E1E))
-                .padding(12.dp),
+                .padding(10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically // Fixed: alignment changed to verticalAlignment
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
@@ -80,13 +82,14 @@ fun CapCutClassicEditorScreen() {
             )
             Button(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0066FF)),
-                onClick = { /* Export Trigger */ }
+                onClick = { /* Export action */ },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
             ) {
                 Text(text = "Export", color = Color.White)
             }
         }
 
-        // Video Preview Area
+        // Video Preview / Player Area
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -132,79 +135,165 @@ fun CapCutClassicEditorScreen() {
                         Text(text = "New Project", color = Color.White)
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(text = "Select a video from gallery to start editing", color = Color.Gray)
+                    Text(text = "Select a video to load multi-track timeline", color = Color.Gray)
                 }
             }
         }
 
-        // Timeline Track Bar (Active only when video is loaded)
+        // --- CAPCUT EXACT MULTI-TRACK TIMELINE SECTION ---
         if (selectedVideoUri != null) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(70.dp)
                     .background(Color(0xFF181818))
-                    .padding(8.dp),
-                contentAlignment = Alignment.CenterStart
+                    .padding(8.dp)
             ) {
+                // Playhead & Controls Header
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF2C3E50))
-                        .padding(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically // Fixed
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically // Fixed
-                    ) {
-                        Icon(Icons.Default.Movie, contentDescription = null, tint = Color.White)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "Main Video Track", color = Color.White, style = MaterialTheme.typography.bodyMedium)
-                    }
+                    Text(text = "00:00 / 01:00", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                     Icon(
                         imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = "Play/Pause",
                         tint = Color.White,
-                        modifier = Modifier.clickable { isPlaying = !isPlaying }
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable { isPlaying = !isPlaying }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 1. Video Track (Multiple Thumbnail Blocks like CapCut)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .background(Color(0xFF222222))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(6) { index ->
+                        Box(
+                            modifier = Modifier
+                                .size(55.dp, 45.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF2C3E50)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Movie, contentDescription = null, tint = Color(0xFF3498DB), modifier = Modifier.size(20.dp))
+                            Text(text = "0${index+1}", color = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(2.dp), style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    // Add more block button (+)
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp, 45.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF333333))
+                            .clickable { videoPickerLauncher.launch("video/*") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add clip", tint = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 2. Audio Track Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(35.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF1E272C))
+                        .clickable { 
+                            audioAdded = true
+                            currentTool = "Audio track added successfully!"
+                        }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.AudioFile, contentDescription = null, tint = Color(0xFF2ECC71), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (audioAdded) "🎵 Background_Audio_Track.mp3 (Active)" else "+ Add audio",
+                        color = if (audioAdded) Color(0xFF2ECC71) else Color.Gray,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // 3. Text Track Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(35.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF2C1E27))
+                        .clickable { 
+                            textAdded = true
+                            currentTool = "Text overlay added successfully!"
+                        }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.TextFields, contentDescription = null, tint = Color(0xFFE74C3C), modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (textAdded) "💬 Subtitle_Text_Block (Active)" else "+ Add text",
+                        color = if (textAdded) Color(0xFFE74C3C) else Color.Gray,
+                        style = MaterialTheme.typography.labelSmall
                     )
                 }
             }
         }
 
-        // Active Tool Feedback Display
+        // Active Tool Status Feedback
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF222222))
-                .padding(10.dp),
+                .background(Color(0xFF1A1A1A))
+                .padding(6.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = currentTool, color = Color(0xFF00B0FF), style = MaterialTheme.typography.bodySmall)
+            Text(text = currentTool, color = Color(0xFF00B0FF), style = MaterialTheme.typography.labelSmall)
         }
 
-        // CapCut Classic Bottom Toolbar
+        // CapCut Bottom Editing Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFF1E1E1E))
                 .horizontalScroll(rememberScrollState())
-                .padding(vertical = 12.dp, horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(vertical = 10.dp, horizontal = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            ToolItem(icon = Icons.Default.ContentCut, label = "Split") { currentTool = "Split Tool Selected" }
-            ToolItem(icon = Icons.Default.Speed, label = "Speed") { currentTool = "Speed Control Selected" }
-            ToolItem(icon = Icons.Default.VolumeUp, label = "Volume") { currentTool = "Audio Volume Selected" }
-            ToolItem(icon = Icons.Default.AudioFile, label = "Audio") { currentTool = "Background Music Selected" }
-            ToolItem(icon = Icons.Default.TextFields, label = "Text") { currentTool = "Text & Subtitles Selected" }
-            ToolItem(icon = Icons.Default.Star, label = "Stickers") { currentTool = "Stickers & Emojis Selected" }
-            ToolItem(icon = Icons.Default.Grain, label = "Effects") { currentTool = "Video Effects Selected" }
-            ToolItem(icon = Icons.Default.Filter, label = "Filters") { currentTool = "Color Filters Selected" }
-            ToolItem(icon = Icons.Default.AspectRatio, label = "Ratio") { currentTool = "Aspect Ratio Selected" }
+            ToolItem(icon = Icons.Default.ContentCut, label = "Split") { currentTool = "Split Tool Applied" }
+            ToolItem(icon = Icons.Default.Speed, label = "Speed") { currentTool = "Speed Control Applied" }
+            ToolItem(icon = Icons.Default.VolumeUp, label = "Volume") { currentTool = "Volume Adjusted" }
+            ToolItem(icon = Icons.Default.AudioFile, label = "Audio") { 
+                audioAdded = true
+                currentTool = "Audio Track Selected & Added" 
+            }
+            ToolItem(icon = Icons.Default.TextFields, label = "Text") { 
+                textAdded = true
+                currentTool = "Text Tool Selected & Added" 
+            }
+            ToolItem(icon = Icons.Default.Star, label = "Stickers") { currentTool = "Stickers Applied" }
+            ToolItem(icon = Icons.Default.Grain, label = "Effects") { currentTool = "Video Effects Applied" }
+            ToolItem(icon = Icons.Default.Filter, label = "Filters") { currentTool = "Color Filters Applied" }
+            ToolItem(icon = Icons.Default.AspectRatio, label = "Ratio") { currentTool = "Aspect Ratio Changed" }
             ToolItem(icon = Icons.Default.Delete, label = "Delete") { 
                 currentTool = "Project Reset"
                 selectedVideoUri = null
+                audioAdded = false
+                textAdded = false
             }
         }
     }
@@ -222,9 +311,9 @@ fun ToolItem(icon: ImageVector, label: String, onClick: () -> Unit) {
             imageVector = icon,
             contentDescription = label,
             tint = Color.White,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(24.dp)
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Text(text = label, color = Color.LightGray, style = MaterialTheme.typography.labelSmall)
     }
 }
