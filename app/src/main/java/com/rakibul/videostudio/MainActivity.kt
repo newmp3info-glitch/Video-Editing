@@ -65,7 +65,7 @@ fun CapCutClassicEditorScreen() {
                 .background(Color(0xFF1E1E1E))
                 .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
-            alignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically // Fixed: alignment changed to verticalAlignment
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
@@ -154,9 +154,11 @@ fun CapCutClassicEditorScreen() {
                         .background(Color(0xFF2C3E50))
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    alignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically // Fixed
                 ) {
-                    Row(alignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically // Fixed
+                    ) {
                         Icon(Icons.Default.Movie, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = "Main Video Track", color = Color.White, style = MaterialTheme.typography.bodyMedium)
@@ -182,7 +184,7 @@ fun CapCutClassicEditorScreen() {
             Text(text = currentTool, color = Color(0xFF00B0FF), style = MaterialTheme.typography.bodySmall)
         }
 
-        // CapCut Classic Bottom Toolbar (No AI, Pure Editing Features with Correct Icons)
+        // CapCut Classic Bottom Toolbar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -217,7 +219,7 @@ fun ToolItem(icon: ImageVector, label: String, onClick: () -> Unit) {
             .padding(horizontal = 4.dp)
     ) {
         Icon(
-            imageVector = icon, // Fixed: Passes the exact tool icon correctly
+            imageVector = icon,
             contentDescription = label,
             tint = Color.White,
             modifier = Modifier.size(26.dp)
