@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose") // Kotlin 2.0+ এর জন্য এটি বাধ্যতামূলক
 }
 
 android {
@@ -31,9 +32,7 @@ android {
     buildFeatures {
         compose = true
     }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.8"
-    }
+    // Kotlin 2.0 তে composeOptions এর পরিবর্তে সরাসরি প্লাগিন কাজ করে
 }
 
 dependencies {
